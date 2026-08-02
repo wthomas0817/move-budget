@@ -124,7 +124,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v16";
+const STORAGE_KEY = "move-budget-shared-v17";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -710,11 +710,11 @@ function App() {
     const isUnderwater = traditionalNetEquity < 0;
 
     // Opendoor math
-    const odOfferPct = 0.935; // ~6.5% below FMV, mid-range of 2-5%+ discount plus their margin
+    const odOfferPct = 0.975; // ~2.5% below FMV — lower end of the 2-5% range since the home is only ~4 yrs old (built 2021), so less repair/condition risk for Opendoor to price in
     const odOffer = data.homeSaleValue * odOfferPct;
     const odServiceFee = odOffer * 0.05;
     const odClosing = odOffer * 0.01;
-    const odRepairs = odOffer * 0.02;
+    const odRepairs = odOffer * 0.01; // lower end of 1-3% range — newer build, less deferred maintenance
     const odNetBeforePayoff = odOffer - odServiceFee - odClosing - odRepairs;
     const odNetEquity = odNetBeforePayoff - data.mortgageBalance;
     const traditionalNet = data.homeSaleValue * (1 - 0.06 - 0.015); // for reference, gross proceeds before payoff
@@ -805,10 +805,10 @@ function App() {
           <div style={{ background: "#fdf6ec", borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6b2e", marginBottom: 6 }}>Opendoor (iBuyer)</div>
             <div style={{ fontSize: 11, color: "#7a5f2a", lineHeight: 1.6 }}>
-              Offer (~6.5% below FMV): {fmt(odOffer)}<br />
+              Offer (~2.5% below FMV, newer home): {fmt(odOffer)}<br />
               − 5% service fee: −{fmt(odServiceFee)}<br />
               − ~1% closing: −{fmt(odClosing)}<br />
-              − ~2% repairs: −{fmt(odRepairs)}<br />
+              − ~1% repairs (2021 build): −{fmt(odRepairs)}<br />
               − mortgage payoff: −{fmt(data.mortgageBalance)}
             </div>
             <div style={{ fontSize: 16, fontWeight: 700, color: odNetEquity >= 0 ? "#8a6b2e" : "#a33", marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0d9a8" }}>
