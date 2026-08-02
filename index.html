@@ -59,7 +59,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v10";
+const STORAGE_KEY = "move-budget-shared-v12";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -106,8 +106,8 @@ const DEFAULT = {
   moveGoal: 15000,
   contributions: [],
   homeSaleValue: 490000,
-  parkerHomeLow: 700000,
-  parkerHomeHigh: 750000,
+  parkerHomeLow: 850000,
+  parkerHomeHigh: 850000,
 };
 
 // Husband's CO salary scenarios (annual gross) — currently $143K at TI
@@ -296,23 +296,13 @@ function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span style={s.lbl}>👩‍💻 Whitney (SeatGeek)</span>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <EditableNum value={data.whitneyPaycheck || 0} onSave={v => save({ ...data, whitneyPaycheck: v, whitneyIncome: Math.round(v * 26 / 12) })} color="#3672b5" />
+                <EditableNum value={data.whitneyPaycheck || 0} onSave={v => save({ ...data, whitneyPaycheck: v, whitneyIncome: Math.round(v * 2) })} color="#3672b5" />
                 <span style={{ fontSize: 11, color: "#999" }}>/ paycheck</span>
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 11, color: "#999", paddingLeft: 28 }}>Pay frequency</span>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[["biweekly", "Every 2 wks"], ["semimonthly", "2x/month"], ["monthly", "Monthly"]].map(([k, l]) => (
-                  <button key={k} style={{ ...s.btnSm((data.whitneyFreq || "biweekly") === k), padding: "3px 8px", fontSize: 10 }}
-                    onClick={() => {
-                      const mult = k === "biweekly" ? 26/12 : k === "semimonthly" ? 2 : 1;
-                      save({ ...data, whitneyFreq: k, whitneyIncome: Math.round((data.whitneyPaycheck || 0) * mult) });
-                    }}>
-                    {l}
-                  </button>
-                ))}
-              </div>
+              <span style={{ fontSize: 11, color: "#3672b5", fontWeight: 600, background: "#eef3fa", padding: "3px 10px", borderRadius: 6 }}>2x/month</span>
             </div>
             {data.whitneyIncome > 0 && (
               <div style={{ fontSize: 12, color: "#3672b5", fontWeight: 600, textAlign: "right", marginTop: 6 }}>
@@ -324,23 +314,13 @@ function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span style={s.lbl}>👷 Husband (TI — $143K/yr)</span>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <EditableNum value={data.husbandPaycheck || 0} onSave={v => save({ ...data, husbandPaycheck: v, husbandIncome: Math.round(v * 26 / 12) })} color="#3672b5" />
+                <EditableNum value={data.husbandPaycheck || 0} onSave={v => save({ ...data, husbandPaycheck: v, husbandIncome: Math.round(v * 2) })} color="#3672b5" />
                 <span style={{ fontSize: 11, color: "#999" }}>/ paycheck</span>
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 11, color: "#999", paddingLeft: 28 }}>Pay frequency</span>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[["biweekly", "Every 2 wks"], ["semimonthly", "2x/month"], ["monthly", "Monthly"]].map(([k, l]) => (
-                  <button key={k} style={{ ...s.btnSm((data.husbandFreq || "biweekly") === k), padding: "3px 8px", fontSize: 10 }}
-                    onClick={() => {
-                      const mult = k === "biweekly" ? 26/12 : k === "semimonthly" ? 2 : 1;
-                      save({ ...data, husbandFreq: k, husbandIncome: Math.round((data.husbandPaycheck || 0) * mult) });
-                    }}>
-                    {l}
-                  </button>
-                ))}
-              </div>
+              <span style={{ fontSize: 11, color: "#3672b5", fontWeight: 600, background: "#eef3fa", padding: "3px 10px", borderRadius: 6 }}>2x/month</span>
             </div>
             {data.husbandIncome > 0 && (
               <div style={{ fontSize: 12, color: "#3672b5", fontWeight: 600, textAlign: "right", marginTop: 6 }}>
