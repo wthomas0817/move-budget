@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fate TX → Parker CO — Move Budget Planner</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { margin: 0; background: #faf9f7; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// ── Local storage shim so the app works outside Claude.ai ──
+// Mirrors the window.storage.get/set API the component expects.
+// Data is stored in this browser's localStorage under one shared key,
+// so anyone opening this page on THIS device/browser sees the same data.
+// If you and your husband each open it on your own phone/laptop, you'll
+// each have your OWN separate copy (this is a static page, not a live
+// synced database) — see the note at the bottom of the page for how to
+// keep them in sync.
+window.storage = {
+  async get(key, shared) {
+    try {
+      const raw = localStorage.getItem("mbp:" + key);
+      if (raw === null) return null;
+      return { key, value: raw, shared: !!shared };
+    } catch (e) { return null; }
+  },
+  async set(key, value, shared) {
+    try {
+      localStorage.setItem("mbp:" + key, value);
+      return { key, value, shared: !!shared };
+    } catch (e) { return null; }
+  },
+  async delete(key, shared) {
+    try {
+      localStorage.removeItem("mbp:" + key);
+      return { key, deleted: true, shared: !!shared };
+    } catch (e) { return null; }
+  },
+  async list(prefix, shared) {
+    try {
+      const keys = Object.keys(localStorage)
+        .filter(k => k.startsWith("mbp:" + (prefix || "")))
+        .map(k => k.slice(4));
+      return { keys, prefix, shared: !!shared };
+    } catch (e) { return null; }
+  }
+};
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+
+const STORAGE_KEY = "move-budget-shared-v10";
+const MOVE_DATE = new Date("2027-06-01");
+
+const CATEGORIES = [
+  { key: "mortgage", label: "Mortgage", icon: "🏠" },
+  { key: "homeservices", label: "Home Svcs (alarm+pest+HOA)", icon: "🔧" },
+  { key: "utilities", label: "Utilities (elec+water+gas+internet)", icon: "⚡" },
+  { key: "fuel", label: "Vehicle Fuel (Jeep+Hyundai Hybrid)", icon: "⛽" },
+  { key: "insurance", label: "Insurance (State Farm + Car)", icon: "🛡️" },
+  { key: "healthfitness", label: "Health/Fitness (OTF+Peloton)", icon: "🏥" },
+  { key: "subscriptions", label: "Subscriptions (streaming+gaming)", icon: "📱" },
+  { key: "groceries", label: "Groceries", icon: "🛒" },
+  { key: "dining", label: "Eating Out", icon: "🍽️" },
+  { key: "gymnastics", label: "Gymnastics", icon: "🤸" },
+  { key: "crunchlabs", label: "CrunchLabs (billed quarterly)", icon: "🧩" },
+  { key: "childcare", label: "Child Care", icon: "👶" },
+  { key: "cleaninglady", label: "Cleaning Lady", icon: "🧹" },
+  { key: "paypal", label: "PayPal (misc discretionary)", icon: "💰" },
+  { key: "studentloans", label: "Student Loans (Earnest+2x)", icon: "🎓" },
+  { key: "sofiloan", label: "SoFi Personal Loan", icon: "💳" },
+  { key: "usaacc", label: "USAA Credit Card", icon: "💳" },
+  { key: "usaacarloan", label: "USAA Car Loan", icon: "🚙" },
+  { key: "furniture", label: "Nebraska Furniture Mart", icon: "🛋️" },
+  { key: "debtpayoff", label: "Additional Debt Payoff", icon: "🎯" },
+  { key: "other", label: "Other / Discretionary", icon: "📦" },
+];
+
+const DEFAULT = {
+  // Whitney's SeatGeek income (confirmed from spreadsheet)
+  whitneyPaycheck: 3532.91,
+  whitneyFreq: "semimonthly",
+  whitneyIncome: 7066,
+  // Husband's TI income (confirmed: Braden, $143K/yr gross)
+  husbandPaycheck: 3796.93,
+  husbandFreq: "semimonthly",
+  husbandIncome: 7594,
+  // CO scenario
+  whitneyIncomeCO: 6755, // Whitney's pay minus ~4.4% CO state tax
+  husbandScenario: "mid",
+  coCity: "Colorado Springs",
+  budget: { mortgage: 3926, homeservices: 185, utilities: 727, fuel: 270, insurance: 376, healthfitness: 227, subscriptions: 161, groceries: 600, dining: 1000, gymnastics: 260, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
+  actual: { mortgage: 0, homeservices: 0, utilities: 0, fuel: 0, insurance: 0, healthfitness: 0, subscriptions: 0, groceries: 0, dining: 0, gymnastics: 0, crunchlabs: 0, childcare: 0, cleaninglady: 0, paypal: 0, studentloans: 0, sofiloan: 0, usaacc: 0, usaacarloan: 0, furniture: 0, debtpayoff: 0, other: 0 },
+  coEstimate: { mortgage: 2200, homeservices: 185, utilities: 620, fuel: 270, insurance: 400, healthfitness: 227, subscriptions: 161, groceries: 620, dining: 1000, gymnastics: 220, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
+  moveFund: 0,
+  moveGoal: 15000,
+  contributions: [],
+  homeSaleValue: 490000,
+  parkerHomeLow: 700000,
+  parkerHomeHigh: 750000,
+};
+
+// Husband's CO salary scenarios (annual gross) — currently $143K at TI
+// Rent estimates for 3BR in each CO area under consideration
+const CO_CITIES = {
+  "Colorado Springs": { rent: 2200, desc: "Original target — most affordable, ~1hr south of Denver" },
+  "Denver": { rent: 2900, desc: "Urban core, most job opportunities, higher cost" },
+  "Parker": { rent: 2950, desc: "Denver suburb, family-oriented, top schools" },
+  "Golden": { rent: 3050, desc: "Foothills town, highest rent, close to mountains" },
+};
+
+const HUS_CURRENT_SALARY = 143000;
+const HUS_SCENARIOS = {
+  low:  { label: "Pay Cut",     salary: 120000, desc: "Smaller CO firm or less complex projects" },
+  mid:  { label: "Lateral",     salary: 143000, desc: "Match current TI salary — realistic for CO Springs" },
+  high: { label: "Step Up",     salary: 160000, desc: "Sr role, military/govt construction, or GC leadership" },
+};
+
+const fmt = (n) => (n < 0 ? "-" : "") + Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) : 0;
+function getDaysLeft() { return Math.max(0, Math.ceil((MOVE_DATE - new Date()) / 864e5)); }
+function getMonthsLeft() { const n = new Date(); return Math.max(0, (MOVE_DATE.getFullYear() - n.getFullYear()) * 12 + MOVE_DATE.getMonth() - n.getMonth()); }
+
+// Rough monthly net from annual gross (married filing jointly, rough effective rates)
+function annualToMonthlyNet(gross, stateTax = 0) {
+  // Rough federal effective rate for married couple
+  let fedRate = 0.12;
+  if (gross > 190000) fedRate = 0.22;
+  else if (gross > 89000) fedRate = 0.17;
+  const fica = Math.min(gross, 168600) * 0.0765;
+  const net = gross - (gross * fedRate) - (gross * stateTax) - fica;
+  return Math.round(Math.max(0, net / 12));
+}
+
+function Bar({ value, max, color, height = 8 }) {
+  const w = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div style={{ width: "100%", height, background: "#ebe9e4", borderRadius: height / 2, overflow: "hidden" }}>
+      <div style={{ width: `${w}%`, height: "100%", background: color, borderRadius: height / 2, transition: "width 0.3s" }} />
+    </div>
+  );
+}
+
+function DualBar({ budgeted, actual, maxVal }) {
+  const bw = maxVal > 0 ? Math.min(100, (budgeted / maxVal) * 100) : 0;
+  const aw = maxVal > 0 ? Math.min(100, (actual / maxVal) * 100) : 0;
+  const over = actual > budgeted;
+  return (
+    <div style={{ position: "relative", height: 14, marginTop: 4 }}>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, background: "#ebe9e4", borderRadius: 3 }}>
+        <div style={{ width: `${bw}%`, height: "100%", background: "#c8d5e3", borderRadius: 3 }} />
+      </div>
+      <div style={{ position: "absolute", top: 8, left: 0, right: 0, height: 6, background: "#ebe9e4", borderRadius: 3 }}>
+        <div style={{ width: `${aw}%`, height: "100%", background: over ? "#e8695a" : "#4fa67a", borderRadius: 3 }} />
+      </div>
+    </div>
+  );
+}
+
+function MountainSVG({ pctFill }) {
+  const p = Math.min(100, Math.max(0, pctFill));
+  return (
+    <svg viewBox="0 0 400 100" style={{ width: "100%", display: "block" }}>
+      <defs>
+        <linearGradient id="mf" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="#2d5a8e" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="#3b7dd8" stopOpacity="0.5" />
+        </linearGradient>
+        <clipPath id="pc"><rect x="0" y={100 - p} width="400" height={p} /></clipPath>
+      </defs>
+      <path d="M0,100 L50,50 L90,70 L140,22 L190,58 L240,12 L290,48 L340,35 L400,62 L400,100Z" fill="#ddd" opacity="0.35" />
+      <path d="M0,100 L50,50 L90,70 L140,22 L190,58 L240,12 L290,48 L340,35 L400,62 L400,100Z" fill="url(#mf)" clipPath="url(#pc)" />
+      <path d="M0,100 L50,50 L90,70 L140,22 L190,58 L240,12 L290,48 L340,35 L400,62" fill="none" stroke="#3b7dd8" strokeWidth="1.2" opacity="0.45" />
+      <line x1="0" y1={100 - p} x2="400" y2={100 - p} stroke="#3b7dd8" strokeWidth="0.8" strokeDasharray="4,3" />
+      <text x="394" y={Math.max(12, 100 - p - 3)} textAnchor="end" fontSize="10" fill="#3b7dd8" fontWeight="600">{Math.round(p)}%</text>
+    </svg>
+  );
+}
+
+function EditableNum({ value, onSave, color = "#2c2c2c" }) {
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState(value.toString());
+  if (editing) return (
+    <input autoFocus type="number" value={v} onChange={e => setV(e.target.value)}
+      onBlur={() => { onSave(parseFloat(v) || 0); setEditing(false); }}
+      onKeyDown={e => { if (e.key === "Enter") { onSave(parseFloat(v) || 0); setEditing(false); } }}
+      style={{ border: "1px solid #c8d5e3", borderRadius: 5, padding: "3px 6px", fontSize: 13, width: 80, textAlign: "right", fontVariantNumeric: "tabular-nums", outline: "none", color }} />
+  );
+  return <span onClick={() => { setEditing(true); setV(value.toString()); }} style={{ cursor: "pointer", color, fontWeight: 600, fontSize: 13, fontVariantNumeric: "tabular-nums", padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,0.02)" }} title="Tap to edit">{fmt(value)}</span>;
+}
+
+// ─────────────────────────────────────────────
+function App() {
+  const [data, setData] = useState(null);
+  const [tab, setTab] = useState("budget");
+  const [contribAmt, setContribAmt] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get(STORAGE_KEY, true);
+        if (r?.value) {
+          const p = JSON.parse(r.value);
+          setData({ ...DEFAULT, ...p, budget: { ...DEFAULT.budget, ...p.budget }, actual: { ...DEFAULT.actual, ...p.actual }, coEstimate: { ...DEFAULT.coEstimate, ...p.coEstimate } });
+        } else setData(DEFAULT);
+      } catch { setData(DEFAULT); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const save = useCallback(async (d) => {
+    setData(d);
+    try { await window.storage.set(STORAGE_KEY, JSON.stringify(d), true); } catch {}
+  }, []);
+
+  const upBudget = (k, v) => save({ ...data, budget: { ...data.budget, [k]: v } });
+  const upActual = (k, v) => save({ ...data, actual: { ...data.actual, [k]: v } });
+  const upCO = (k, v) => save({ ...data, coEstimate: { ...data.coEstimate, [k]: v } });
+
+  const addContrib = () => {
+    const a = parseFloat(contribAmt);
+    if (!a || a <= 0) return;
+    save({ ...data, moveFund: data.moveFund + a, contributions: [...data.contributions, { amount: a, date: new Date().toISOString() }] });
+    setContribAmt("");
+  };
+
+  const totalBudget = useMemo(() => data ? Object.values(data.budget).reduce((a, b) => a + b, 0) : 0, [data]);
+  const totalActual = useMemo(() => data ? Object.values(data.actual).reduce((a, b) => a + b, 0) : 0, [data]);
+  const totalCO = useMemo(() => data ? Object.values(data.coEstimate).reduce((a, b) => a + b, 0) : 0, [data]);
+
+  if (loading || !data) return <div style={{ padding: 40, textAlign: "center", fontFamily: "system-ui", color: "#999" }}>Loading…</div>;
+
+  const income = data.whitneyIncome + data.husbandIncome;
+  const husScenario = HUS_SCENARIOS[data.husbandScenario];
+  const husCoNet = annualToMonthlyNet(husScenario.salary, 0.044);
+  const whitneyCoNet = data.whitneyIncomeCO || data.whitneyIncome; // assume same if not set
+  const incomeCO = whitneyCoNet + husCoNet;
+  // CO state tax on Whitney (she'd owe CO tax working remote from CO)
+  const whitneyCoTax = Math.round((data.whitneyIncome > 0 ? data.whitneyIncome * 12 / (1 - 0.12 - 0.0765) : 0) * 0.044 / 12); // rough
+  const monthsLeft = getMonthsLeft();
+  const daysLeft = getDaysLeft();
+  const surplus = income - totalBudget;
+  const remaining = Math.max(0, data.moveGoal - data.moveFund);
+  const monthlyNeeded = monthsLeft > 0 ? Math.ceil(remaining / monthsLeft) : remaining;
+
+  const s = {
+    app: { fontFamily: "'Inter','Segoe UI',system-ui,sans-serif", maxWidth: 680, margin: "0 auto", background: "#faf9f7", minHeight: "100vh", color: "#2c2c2c" },
+    hdr: { background: "linear-gradient(135deg,#1a3150 0%,#2a5080 60%,#3672b5 100%)", color: "#fff", padding: "24px 20px 18px" },
+    hTitle: { fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" },
+    hSub: { fontSize: 12, opacity: 0.75, marginBottom: 14 },
+    hGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 4 },
+    hBox: { textAlign: "center" },
+    hNum: { fontSize: 24, fontWeight: 700, lineHeight: 1.1 },
+    hLbl: { fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.65, marginTop: 2 },
+    tabs: { display: "flex", background: "#fff", borderBottom: "1px solid #e4e2dd", position: "sticky", top: 0, zIndex: 10 },
+    tab: (a) => ({ flex: 1, padding: "11px 2px", fontSize: 11, fontWeight: a ? 650 : 400, color: a ? "#1a3150" : "#999", background: "none", border: "none", borderBottom: a ? "2.5px solid #3672b5" : "2.5px solid transparent", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.06em" }),
+    sec: { padding: "18px 18px 6px" },
+    secT: { fontSize: 14, fontWeight: 700, color: "#1a3150", marginBottom: 10 },
+    card: { background: "#fff", borderRadius: 10, padding: 14, marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" },
+    row: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #f3f1ed" },
+    lbl: { fontSize: 13, color: "#555", display: "flex", alignItems: "center", gap: 7 },
+    stat: { textAlign: "center", flex: 1 },
+    statN: { fontSize: 20, fontWeight: 700, lineHeight: 1.2 },
+    statL: { fontSize: 10, color: "#999", marginTop: 2, textTransform: "uppercase", letterSpacing: "0.04em" },
+    btn: { background: "#3672b5", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+    btnSm: (active) => ({ background: active ? "#3672b5" : "transparent", color: active ? "#fff" : "#3672b5", border: "1px solid #3672b5", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }),
+    input: { border: "1px solid #d6d3cc", borderRadius: 6, padding: "7px 10px", fontSize: 13, width: 90, textAlign: "right", fontVariantNumeric: "tabular-nums", outline: "none" },
+    warn: { background: "linear-gradient(135deg,#fef3e2,#fde8c8)", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #f0d9a8" },
+    info: { background: "#f0f4f9", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #d0dcea" },
+    good: { background: "#f0f7ed", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #c8e0be" },
+    footer: { textAlign: "center", padding: "14px 18px 22px", fontSize: 10, color: "#ccc" },
+  };
+
+  // ═══════ TAB: BUDGET ═══════
+  const renderBudget = () => {
+    const hasActuals = totalActual > 0;
+    return (
+      <div style={s.sec}>
+        <div style={s.secT}>Your Income</div>
+        <div style={s.card}>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+            Enter the amount that hits your bank account each payday (after taxes, insurance, 401k, etc). We'll convert to monthly automatically.
+          </div>
+          <div style={{ padding: "10px 0", borderBottom: "1px solid #f0eeea" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={s.lbl}>👩‍💻 Whitney (SeatGeek)</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <EditableNum value={data.whitneyPaycheck || 0} onSave={v => save({ ...data, whitneyPaycheck: v, whitneyIncome: Math.round(v * 26 / 12) })} color="#3672b5" />
+                <span style={{ fontSize: 11, color: "#999" }}>/ paycheck</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#999", paddingLeft: 28 }}>Pay frequency</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[["biweekly", "Every 2 wks"], ["semimonthly", "2x/month"], ["monthly", "Monthly"]].map(([k, l]) => (
+                  <button key={k} style={{ ...s.btnSm((data.whitneyFreq || "biweekly") === k), padding: "3px 8px", fontSize: 10 }}
+                    onClick={() => {
+                      const mult = k === "biweekly" ? 26/12 : k === "semimonthly" ? 2 : 1;
+                      save({ ...data, whitneyFreq: k, whitneyIncome: Math.round((data.whitneyPaycheck || 0) * mult) });
+                    }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {data.whitneyIncome > 0 && (
+              <div style={{ fontSize: 12, color: "#3672b5", fontWeight: 600, textAlign: "right", marginTop: 6 }}>
+                = {fmt(data.whitneyIncome)}/mo
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "10px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={s.lbl}>👷 Husband (TI — $143K/yr)</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <EditableNum value={data.husbandPaycheck || 0} onSave={v => save({ ...data, husbandPaycheck: v, husbandIncome: Math.round(v * 26 / 12) })} color="#3672b5" />
+                <span style={{ fontSize: 11, color: "#999" }}>/ paycheck</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#999", paddingLeft: 28 }}>Pay frequency</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[["biweekly", "Every 2 wks"], ["semimonthly", "2x/month"], ["monthly", "Monthly"]].map(([k, l]) => (
+                  <button key={k} style={{ ...s.btnSm((data.husbandFreq || "biweekly") === k), padding: "3px 8px", fontSize: 10 }}
+                    onClick={() => {
+                      const mult = k === "biweekly" ? 26/12 : k === "semimonthly" ? 2 : 1;
+                      save({ ...data, husbandFreq: k, husbandIncome: Math.round((data.husbandPaycheck || 0) * mult) });
+                    }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {data.husbandIncome > 0 && (
+              <div style={{ fontSize: 12, color: "#3672b5", fontWeight: 600, textAlign: "right", marginTop: 6 }}>
+                = {fmt(data.husbandIncome)}/mo
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 2px", borderTop: "2px solid #eee", marginTop: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Combined Monthly</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: "#1a3150" }}>{fmt(income)}</span>
+          </div>
+        </div>
+
+        <div style={s.secT}>Monthly Cash Flow</div>
+        <div style={s.card}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            <div style={s.stat}>
+              <div style={{ ...s.statN, color: "#2a5080" }}>{fmt(income)}</div>
+              <div style={s.statL}>Take-Home</div>
+            </div>
+            <div style={{ width: 1, background: "#eee" }} />
+            <div style={s.stat}>
+              <div style={{ ...s.statN, color: "#c44" }}>{fmt(totalBudget)}</div>
+              <div style={s.statL}>Budgeted</div>
+            </div>
+            <div style={{ width: 1, background: "#eee" }} />
+            <div style={s.stat}>
+              <div style={{ ...s.statN, color: surplus >= 0 ? "#2d8a4e" : "#c44" }}>{fmt(surplus)}</div>
+              <div style={s.statL}>Surplus</div>
+            </div>
+          </div>
+          {income > 0 && <Bar value={totalBudget} max={income} color={totalBudget > income ? "#e8695a" : "#3672b5"} height={10} />}
+          {income > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#999", marginTop: 3 }}>
+              <span>{pct(totalBudget, income)}% of income budgeted</span>
+              <span>{fmt(surplus)} available</span>
+            </div>
+          )}
+          {hasActuals && (
+            <div style={{ marginTop: 10, padding: "10px 0 0", borderTop: "1px solid #f0eeea" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ color: "#888" }}>Actual spending this month</span>
+                <span style={{ fontWeight: 700, color: totalActual > totalBudget ? "#c44" : "#2d8a4e" }}>{fmt(totalActual)}</span>
+              </div>
+              <Bar value={totalActual} max={income || totalBudget} color={totalActual > totalBudget ? "#e8695a" : "#4fa67a"} height={6} />
+            </div>
+          )}
+        </div>
+
+        {income === 0 && (
+          <div style={s.info}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#2a5080", marginBottom: 4 }}>👆 Start by entering your incomes above</div>
+            <div style={{ fontSize: 12, color: "#4a6a8e", lineHeight: 1.5 }}>
+              Enter your monthly take-home pay (after taxes and deductions) for both you and your husband. This powers all the calculations throughout the app.
+            </div>
+          </div>
+        )}
+
+        <div style={s.secT}>Budget by Category</div>
+        <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>Tap any amount to edit • Top bar = budget, bottom = actual</div>
+        <div style={s.card}>
+          {CATEGORIES.map(c => {
+            const b = data.budget[c.key]; const a = data.actual[c.key]; const over = a > b && a > 0;
+            return (
+              <div key={c.key} style={{ padding: "10px 0", borderBottom: "1px solid #f5f3f0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ ...s.lbl, fontSize: 12 }}>{c.icon} {c.label}</span>
+                  <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 9, color: "#bbb", textTransform: "uppercase" }}>Budget</div>
+                      <EditableNum value={b} onSave={v => upBudget(c.key, v)} color="#2a5080" />
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 9, color: "#bbb", textTransform: "uppercase" }}>Actual</div>
+                      <EditableNum value={a} onSave={v => upActual(c.key, v)} color={over ? "#c44" : "#4fa67a"} />
+                    </div>
+                  </div>
+                </div>
+                <DualBar budgeted={b} actual={a} maxVal={Math.max(b, a, 1)} />
+                {over && <div style={{ fontSize: 10, color: "#c44", marginTop: 2, textAlign: "right" }}>Over by {fmt(a - b)}</div>}
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Totals</span>
+            <div style={{ display: "flex", gap: 20 }}>
+              <span style={{ fontWeight: 700, color: "#2a5080", fontSize: 14 }}>{fmt(totalBudget)}</span>
+              <span style={{ fontWeight: 700, color: totalActual > totalBudget ? "#c44" : "#4fa67a", fontSize: 14 }}>{totalActual > 0 ? fmt(totalActual) : "—"}</span>
+            </div>
+          </div>
+        </div>
+
+        {surplus > 0 && monthlyNeeded > 0 && (
+          <div style={s.good}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#2d6e3f", marginBottom: 4 }}>💡 Move Savings Plan</div>
+            <div style={{ fontSize: 12, color: "#3a6e3f", lineHeight: 1.5 }}>
+              You have <strong>{fmt(surplus)}/mo</strong> in surplus. Setting aside <strong>{fmt(monthlyNeeded)}/mo</strong> toward your {fmt(data.moveGoal)} move fund leaves {fmt(surplus - monthlyNeeded)} for everything else. At that rate you'd hit your goal {monthsLeft > 0 ? `in about ${Math.ceil(remaining / monthlyNeeded)} months` : "soon"}.
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ═══════ TAB: COMPARE ═══════
+  const renderCompare = () => {
+    const coSurplus = incomeCO > 0 ? incomeCO - totalCO : null;
+    return (
+      <div style={s.sec}>
+        {/* ── Income comparison ── */}
+        <div style={s.secT}>Income: Now vs. Colorado Springs</div>
+        <div style={s.card}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Current — Fate, TX (no state income tax)</div>
+          <div style={s.row}>
+            <span style={s.lbl}>👩‍💻 Whitney @ SeatGeek</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#d97706" }}>{data.whitneyIncome > 0 ? fmt(data.whitneyIncome) + "/mo" : "Enter in Budget tab"}</span>
+          </div>
+          <div style={{ ...s.row, borderBottom: "none" }}>
+            <span style={s.lbl}>👷 Husband @ TI</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#d97706" }}>{data.husbandIncome > 0 ? fmt(data.husbandIncome) + "/mo" : "Enter in Budget tab"}</span>
+          </div>
+          {income > 0 && (
+            <div style={{ textAlign: "right", padding: "8px 0 0", borderTop: "2px solid #eee", fontWeight: 700, color: "#d97706" }}>
+              Combined: {fmt(income)}/mo
+            </div>
+          )}
+        </div>
+
+        <div style={s.card}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>After Move — CO Springs (4.4% state income tax)</div>
+
+          <div style={s.info}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#2a5080", marginBottom: 6 }}>👩‍💻 Whitney @ SeatGeek (Remote)</div>
+            <div style={{ fontSize: 12, color: "#4a6a8e", lineHeight: 1.6 }}>
+              SeatGeek's <strong>WorkGeek</strong> policy supports fully remote work. Since both Fate TX and CO Springs have similar cost of living (~1% above national avg), a geo-based pay adjustment is <strong>unlikely to be significant</strong> if SeatGeek uses location tiers. However, you'll owe Colorado's 4.4% state income tax on your earnings — a new expense you don't have in Texas.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>Expected CO take-home:</span>
+              <EditableNum value={data.whitneyIncomeCO} onSave={v => save({ ...data, whitneyIncomeCO: v })} color="#3672b5" />
+            </div>
+            {data.whitneyIncome > 0 && data.whitneyIncomeCO === 0 && (
+              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                💡 Quick estimate: your current {fmt(data.whitneyIncome)} minus ~4.4% CO tax ≈ <strong style={{ color: "#3672b5", cursor: "pointer" }} onClick={() => save({ ...data, whitneyIncomeCO: Math.round(data.whitneyIncome * 0.956) })}>{fmt(Math.round(data.whitneyIncome * 0.956))}</strong> (tap to use)
+              </div>
+            )}
+          </div>
+
+          <div style={{ ...s.warn, marginTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#8a6b2e", marginBottom: 6 }}>👷 Husband — New Role in CO Springs</div>
+            <div style={{ fontSize: 12, color: "#7a5f2a", lineHeight: 1.6, marginBottom: 10 }}>
+              Currently making <strong>$143K/yr at TI</strong>. Good news: CO Springs Sr Construction PM median is ~$140K, so a lateral move is realistic. Military construction (Fort Carson, Peterson SFB), healthcare, and residential growth provide steady demand. The real question is whether he can match or beat $143K. Select a scenario:
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              {Object.entries(HUS_SCENARIOS).map(([k, v]) => (
+                <button key={k} style={s.btnSm(data.husbandScenario === k)} onClick={() => save({ ...data, husbandScenario: k })}>
+                  {v.label}: {fmt(v.salary)}/yr
+                </button>
+              ))}
+            </div>
+            <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: 8, padding: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span>Gross annual:</span>
+                <span style={{ fontWeight: 700 }}>{fmt(husScenario.salary)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginTop: 4 }}>
+                <span>Est. monthly net (after fed + CO + FICA):</span>
+                <span style={{ fontWeight: 700, color: "#3672b5" }}>{fmt(husCoNet)}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>{husScenario.desc}</div>
+              {data.husbandIncome > 0 && (
+                <div style={{ marginTop: 8, padding: "8px 0 0", borderTop: "1px dashed #e0d5c0", display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span style={{ color: "#8a6b2e" }}>vs. current TI net ({fmt(data.husbandIncome)}/mo in TX):</span>
+                  <span style={{ fontWeight: 700, color: husCoNet - data.husbandIncome >= 0 ? "#2d8a4e" : "#c44" }}>
+                    {husCoNet - data.husbandIncome >= 0 ? "+" : ""}{fmt(husCoNet - data.husbandIncome)}/mo
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {(whitneyCoNet > 0 || husCoNet > 0) && (
+            <div style={{ textAlign: "right", padding: "8px 0 0", borderTop: "2px solid #eee", fontWeight: 700, color: "#3672b5" }}>
+              Est. combined CO: {fmt(incomeCO)}/mo
+            </div>
+          )}
+        </div>
+
+        {income > 0 && incomeCO > 0 && (
+          <div style={{ ...s.card, textAlign: "center", padding: 16 }}>
+            <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: "0.05em" }}>Income Change After Move</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: incomeCO - income >= 0 ? "#2d8a4e" : "#c44" }}>
+              {incomeCO - income >= 0 ? "+" : ""}{fmt(incomeCO - income)}<span style={{ fontSize: 13, fontWeight: 400, opacity: 0.65 }}>/mo</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── City selector ── */}
+        <div style={s.secT}>Which CO Area?</div>
+        <div style={s.card}>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 10 }}>Rent varies a lot by area. Tap one to update the estimate below.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {Object.entries(CO_CITIES).map(([city, info]) => (
+              <button key={city}
+                onClick={() => save({ ...data, coCity: city, coEstimate: { ...data.coEstimate, mortgage: info.rent } })}
+                style={{
+                  textAlign: "left", padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                  border: data.coCity === city ? "2px solid #3672b5" : "1px solid #ddd",
+                  background: data.coCity === city ? "#eef3fa" : "#fff",
+                }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: data.coCity === city ? "#1a3150" : "#444" }}>{city}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#3672b5", margin: "2px 0" }}>{fmt(info.rent)}/mo</div>
+                <div style={{ fontSize: 10, color: "#999", lineHeight: 1.3 }}>{info.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Expense comparison ── */}
+        <div style={s.secT}>Expenses: Fate TX vs {data.coCity}</div>
+        <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>Tap CO amounts to adjust</div>
+        <div style={s.card}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "0 0 8px", borderBottom: "2px solid #eee", marginBottom: 2 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#999", textTransform: "uppercase" }}>Category</span>
+            <div style={{ display: "flex", gap: 16 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", width: 65, textAlign: "right" }}>TX</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#3672b5", textTransform: "uppercase", width: 65, textAlign: "right" }}>CO</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#999", textTransform: "uppercase", width: 52, textAlign: "right" }}>Diff</span>
+            </div>
+          </div>
+          {CATEGORIES.map(c => {
+            const tx = data.budget[c.key]; const co = data.coEstimate[c.key]; const d = co - tx;
+            return (
+              <div key={c.key} style={s.row}>
+                <span style={{ ...s.lbl, fontSize: 12 }}>{c.icon} {c.label}</span>
+                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#d97706", width: 65, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmt(tx)}</span>
+                  <div style={{ width: 65, textAlign: "right" }}><EditableNum value={co} onSave={v => upCO(c.key, v)} color="#3672b5" /></div>
+                  <span style={{ fontSize: 12, fontWeight: 600, width: 52, textAlign: "right", color: d > 0 ? "#c44" : d < 0 ? "#2d8a4e" : "#999", fontVariantNumeric: "tabular-nums" }}>
+                    {d === 0 ? "—" : (d > 0 ? "+" : "") + fmt(d)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>Monthly Total</span>
+            <div style={{ display: "flex", gap: 16 }}>
+              <span style={{ fontWeight: 700, color: "#d97706", width: 65, textAlign: "right" }}>{fmt(totalBudget)}</span>
+              <span style={{ fontWeight: 700, color: "#3672b5", width: 65, textAlign: "right" }}>{fmt(totalCO)}</span>
+              <span style={{ fontWeight: 700, width: 52, textAlign: "right", color: totalCO - totalBudget > 0 ? "#c44" : "#2d8a4e" }}>
+                {(totalCO - totalBudget > 0 ? "+" : "") + fmt(totalCO - totalBudget)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Tax summary ── */}
+        <div style={s.warn}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#8a6b2e", marginBottom: 6 }}>Tax Summary: TX → CO</div>
+          <div style={{ fontSize: 12, color: "#7a5f2a", lineHeight: 1.7 }}>
+            <strong>Texas:</strong> No state income tax • Property tax ~2.5–3% • Sales tax ~8.25%<br />
+            <strong>Colorado:</strong> 4.4% flat income tax • Property tax ~0.5% • Sales tax ~8.2%<br />
+            <strong>Key:</strong> Both of you will owe CO state income tax. Whitney, even though your employer is in NYC, you'll owe CO tax as a CO resident. On the upside, property tax drops dramatically if you buy.
+          </div>
+        </div>
+
+        {/* ── Net impact ── */}
+        {incomeCO > 0 && (
+          <>
+            <div style={s.secT}>Bottom Line: Net Monthly Impact</div>
+            <div style={{ ...s.card, padding: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                <div style={{ background: "#fdf6ec", borderRadius: 8, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase" }}>Now (Fate TX)</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#d97706" }}>{fmt(income - totalBudget)}</div>
+                  <div style={{ fontSize: 10, color: "#999" }}>monthly surplus</div>
+                </div>
+                <div style={{ background: "#eef3fa", borderRadius: 8, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase" }}>After Move (CO)</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#3672b5" }}>{fmt(incomeCO - totalCO)}</div>
+                  <div style={{ fontSize: 10, color: "#999" }}>est. monthly surplus</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase", letterSpacing: "0.05em" }}>Change in Monthly Surplus</div>
+                <div style={{ fontSize: 30, fontWeight: 700, color: (incomeCO - totalCO) - (income - totalBudget) >= 0 ? "#2d8a4e" : "#c44" }}>
+                  {(incomeCO - totalCO) - (income - totalBudget) >= 0 ? "+" : ""}{fmt((incomeCO - totalCO) - (income - totalBudget))}<span style={{ fontSize: 13, fontWeight: 400, opacity: 0.65 }}>/mo</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ═══════ TAB: MOVE FUND ═══════
+  const renderFund = () => {
+    const homeGap = ((data.parkerHomeLow + data.parkerHomeHigh) / 2) - data.homeSaleValue;
+    return (
+    <div style={s.sec}>
+      <div style={s.secT}>🏡 315 Bluewood Dr (Fate) → Parker, CO</div>
+      <div style={s.card}>
+        <div style={{ fontSize: 11, color: "#999", marginBottom: 10 }}>Sell price includes value for your mudroom, extended closet & upstairs ensuite upgrades. Tap any number to adjust.</div>
+        <div style={s.row}>
+          <span style={s.lbl}>🏠 Est. sale value (Fate, upgraded)</span>
+          <EditableNum value={data.homeSaleValue} onSave={v => save({ ...data, homeSaleValue: v })} color="#d97706" />
+        </div>
+        <div style={s.row}>
+          <span style={s.lbl}>🏡 Parker home, low end (4br+office)</span>
+          <EditableNum value={data.parkerHomeLow} onSave={v => save({ ...data, parkerHomeLow: v })} color="#3672b5" />
+        </div>
+        <div style={{ ...s.row, borderBottom: "none" }}>
+          <span style={s.lbl}>🏡 Parker home, high end</span>
+          <EditableNum value={data.parkerHomeHigh} onSave={v => save({ ...data, parkerHomeHigh: v })} color="#3672b5" />
+        </div>
+        <div style={{ textAlign: "center", padding: "14px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Gap to Cover (midpoint est.)</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: "#c44" }}>{fmt(homeGap)}</div>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>after rolling in full sale proceeds — before subtracting your remaining mortgage balance, which reduces actual cash you'd net from the sale</div>
+        </div>
+      </div>
+
+      <div style={s.secT}>Move Fund</div>
+      <div style={s.card}>
+        <div style={{ textAlign: "center", marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Saved</div>
+          <div style={{ fontSize: 34, fontWeight: 700, color: "#1a3150" }}>{fmt(data.moveFund)}</div>
+        </div>
+        <MountainSVG pctFill={data.moveGoal > 0 ? (data.moveFund / data.moveGoal) * 100 : 0} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#999", marginTop: 2 }}>
+          <span>{fmt(0)}</span><span>Goal: {fmt(data.moveGoal)}</span>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+          <input type="number" placeholder="Amount" value={contribAmt} onChange={e => setContribAmt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") addContrib(); }}
+            style={{ ...s.input, flex: 1, width: "auto", textAlign: "left" }} />
+          <button onClick={addContrib} style={s.btn}>Add to Fund</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 16, padding: "14px 0 0", borderTop: "1px solid #eee" }}>
+          <div style={s.stat}><div style={{ ...s.statN, fontSize: 17, color: "#c44" }}>{fmt(remaining)}</div><div style={s.statL}>Remaining</div></div>
+          <div style={s.stat}><div style={{ ...s.statN, fontSize: 17, color: "#1a3150" }}>{monthsLeft > 0 ? fmt(monthlyNeeded) : "—"}</div><div style={s.statL}>Needed/Mo</div></div>
+          <div style={s.stat}><div style={{ ...s.statN, fontSize: 17, color: "#3672b5" }}>{monthsLeft}</div><div style={s.statL}>Months Left</div></div>
+        </div>
+      </div>
+
+      <div style={s.secT}>Typical Move Costs (~900 mi)</div>
+      <div style={s.card}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}>
+          {[["Security deposit", "$2,000–4,000"], ["First + last rent", "$3,000–5,000"], ["Moving company", "$3,000–6,000"], ["Travel & gas", "$300–500"], ["Utility deposits", "$200–500"], ["Setup / furnishing", "$500–1,500"]].map(([l, r], i) => (
+            <div key={i} style={{ background: "#f8f7f5", borderRadius: 6, padding: "8px 10px" }}>
+              <div style={{ fontWeight: 600, color: "#444" }}>{l}</div>
+              <div style={{ color: "#888" }}>{r}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Your goal:</span>
+          <EditableNum value={data.moveGoal} onSave={v => save({ ...data, moveGoal: v })} color="#1a3150" />
+        </div>
+      </div>
+
+      {data.contributions.length > 0 && (
+        <>
+          <div style={s.secT}>Contributions</div>
+          <div style={s.card}>
+            {data.contributions.slice(-12).reverse().map((c, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f5f3f0", fontSize: 13 }}>
+                <span style={{ color: "#999" }}>{new Date(c.date).toLocaleDateString()}</span>
+                <span style={{ fontWeight: 600, color: "#2d8a4e" }}>+{fmt(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div style={{ ...s.card, marginTop: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a3150", marginBottom: 6 }}>🔄 Sync With Your Husband</div>
+        <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+          This page saves data to this device only. To share your latest numbers: tap Export, send him the copied text (text message or email), then he taps Import and pastes it on his device. Whoever updates last "wins" — so pick one person to be the keeper of the latest version, or export/import each time you both make changes.
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={async () => {
+            const json = JSON.stringify(data);
+            try {
+              await navigator.clipboard.writeText(json);
+              alert("Copied! Now paste this into a text/email to your husband.");
+            } catch (e) {
+              prompt("Copy this text and send it to your husband:", json);
+            }
+          }} style={{ ...s.btn, flex: 1 }}>📤 Export (Copy)</button>
+          <button onClick={() => {
+            const pasted = prompt("Paste the exported text here:");
+            if (!pasted) return;
+            try {
+              const parsed = JSON.parse(pasted);
+              save({ ...DEFAULT, ...parsed });
+              alert("Imported successfully!");
+            } catch (e) {
+              alert("That didn't look like valid exported data. Please check and try again.");
+            }
+          }} style={{ ...s.btn, flex: 1, background: "#4fa67a" }}>📥 Import (Paste)</button>
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "20px 0" }}>
+        <button onClick={() => { if (confirm("Reset all data to defaults?")) save(DEFAULT); }} style={{ background: "transparent", color: "#c44", border: "1px solid #c44", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Reset All Data</button>
+      </div>
+    </div>
+  );};
+
+  return (
+    <div style={s.app}>
+      <div style={s.hdr}>
+        <div style={s.hTitle}>Fate, TX → Colorado Springs</div>
+        <div style={s.hSub}>Whitney & Family • Move Budget Planner • June 2027</div>
+        <div style={s.hGrid}>
+          <div style={s.hBox}><div style={s.hNum}>{daysLeft}</div><div style={s.hLbl}>Days Left</div></div>
+          <div style={s.hBox}><div style={s.hNum}>{monthsLeft}</div><div style={s.hLbl}>Months</div></div>
+          <div style={s.hBox}><div style={s.hNum}>{fmt(data.moveFund)}</div><div style={s.hLbl}>Move Fund</div></div>
+        </div>
+      </div>
+      <div style={s.tabs}>
+        {[["budget", "Budget"], ["compare", "Compare"], ["fund", "Move Fund"]].map(([k, l]) => (
+          <button key={k} style={s.tab(tab === k)} onClick={() => setTab(k)}>{l}</button>
+        ))}
+      </div>
+      {tab === "budget" && renderBudget()}
+      {tab === "compare" && renderCompare()}
+      {tab === "fund" && renderFund()}
+      <div style={s.footer}>Sources: ZipRecruiter, Glassdoor, Salary.com, Tax Foundation (2026) • All amounts editable</div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+
+<div style="max-width:680px;margin:0 auto;padding:16px 20px 40px;font-family:system-ui,sans-serif;font-size:12px;color:#aaa;text-align:center;border-top:1px solid #eee;">
+  Data is saved in this browser only. To share updates with each other, use the Export/Import buttons in the app, or both edit on the same device.
+</div>
+</body>
+</html>
