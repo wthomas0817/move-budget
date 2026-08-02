@@ -59,7 +59,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v12";
+const STORAGE_KEY = "move-budget-shared-v13";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -108,6 +108,7 @@ const DEFAULT = {
   homeSaleValue: 490000,
   parkerHomeLow: 850000,
   parkerHomeHigh: 850000,
+  parkerRentEstimate: 2950,
 };
 
 // Husband's CO salary scenarios (annual gross) — currently $143K at TI
@@ -620,6 +621,21 @@ function App() {
   // ═══════ TAB: MOVE FUND ═══════
   const renderFund = () => {
     const homeGap = ((data.parkerHomeLow + data.parkerHomeHigh) / 2) - data.homeSaleValue;
+    const overlapMonthly = data.budget.mortgage + data.parkerRentEstimate;
+    const currentSurplus = (data.whitneyIncome + data.husbandIncome) - Object.values(data.budget).reduce((a,b)=>a+b,0);
+    const bridgeSurplus = currentSurplus - data.parkerRentEstimate; // extra rent eats into surplus
+    const monthsSustainable = bridgeSurplus > 0 ? "indefinitely (still positive)" : `~${Math.floor(data.moveFund / Math.abs(bridgeSurplus || 1))} months using saved funds`;
+
+    // Opendoor math
+    const odOfferPct = 0.935; // ~6.5% below FMV, mid-range of 2-5%+ discount plus their margin
+    const odOffer = data.homeSaleValue * odOfferPct;
+    const odServiceFee = odOffer * 0.05;
+    const odClosing = odOffer * 0.01;
+    const odRepairs = odOffer * 0.02;
+    const odNet = odOffer - odServiceFee - odClosing - odRepairs;
+    const traditionalNet = data.homeSaleValue * (1 - 0.06 - 0.015); // 6% commission + 1.5% closing
+    const odVsTraditional = traditionalNet - odNet;
+
     return (
     <div style={s.sec}>
       <div style={s.secT}>🏡 315 Bluewood Dr (Fate) → Parker, CO</div>
@@ -641,6 +657,71 @@ function App() {
           <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Gap to Cover (midpoint est.)</div>
           <div style={{ fontSize: 26, fontWeight: 700, color: "#c44" }}>{fmt(homeGap)}</div>
           <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>after rolling in full sale proceeds — before subtracting your remaining mortgage balance, which reduces actual cash you'd net from the sale</div>
+        </div>
+      </div>
+
+      <div style={s.secT}>🌉 Rent-First Bridge Scenario</div>
+      <div style={s.card}>
+        <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+          Renting in Parker before selling Fate means carrying both costs at once for a while. Here's what that overlap looks like.
+        </div>
+        <div style={s.row}>
+          <span style={s.lbl}>🏠 Fate mortgage (still owed)</span>
+          <span style={{ fontWeight: 600, fontSize: 13, color: "#d97706" }}>{fmt(data.budget.mortgage)}/mo</span>
+        </div>
+        <div style={{ ...s.row, borderBottom: "none" }}>
+          <span style={s.lbl}>🏡 Parker rent estimate</span>
+          <EditableNum value={data.parkerRentEstimate} onSave={v => save({ ...data, parkerRentEstimate: v })} color="#3672b5" />
+        </div>
+        <div style={{ textAlign: "center", padding: "14px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Combined Housing During Overlap</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: "#c44" }}>{fmt(overlapMonthly)}/mo</div>
+        </div>
+        <div style={{ marginTop: 10, padding: "10px 12px", background: bridgeSurplus > 0 ? "#f0f7ed" : "#fef3e2", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: bridgeSurplus > 0 ? "#2d6e3f" : "#8a6b2e", lineHeight: 1.5 }}>
+            {bridgeSurplus > 0
+              ? <>Even carrying both, you'd still have <strong>{fmt(bridgeSurplus)}/mo</strong> surplus — sustainable {monthsSustainable}.</>
+              : <>This overlap runs <strong>{fmt(Math.abs(bridgeSurplus))}/mo</strong> negative against your current surplus — you'd be drawing down savings, sustainable for {monthsSustainable}.</>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div style={s.secT}>🏷️ Selling via Opendoor vs. Traditional Listing</div>
+      <div style={s.card}>
+        <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+          Since renting first removes the time pressure to sell fast, it's worth comparing what you'd actually net each way.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ background: "#fdf6ec", borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#8a6b2e", marginBottom: 6 }}>Opendoor (iBuyer)</div>
+            <div style={{ fontSize: 11, color: "#7a5f2a", lineHeight: 1.6 }}>
+              Offer (~6.5% below FMV): {fmt(odOffer)}<br />
+              − 5% service fee: −{fmt(odServiceFee)}<br />
+              − ~1% closing: −{fmt(odClosing)}<br />
+              − ~2% repairs: −{fmt(odRepairs)}
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#8a6b2e", marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0d9a8" }}>
+              Net: {fmt(odNet)}
+            </div>
+          </div>
+          <div style={{ background: "#eef3fa", borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#1a3150", marginBottom: 6 }}>Traditional Listing</div>
+            <div style={{ fontSize: 11, color: "#4a6a8e", lineHeight: 1.6 }}>
+              Full value: {fmt(data.homeSaleValue)}<br />
+              − 6% agent commission<br />
+              − ~1.5% closing costs<br />
+              (takes longer, but no rush now)
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#1a3150", marginTop: 8, paddingTop: 8, borderTop: "1px solid #d0dcea" }}>
+              Net: {fmt(traditionalNet)}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: "center", marginTop: 12, padding: "10px 0 0", borderTop: "2px solid #eee" }}>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Traditional Sale Nets You</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#2d8a4e" }}>+{fmt(odVsTraditional)} more</div>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>Since you're not in a rush anymore, the speed premium of Opendoor may not be worth this gap.</div>
         </div>
       </div>
 
