@@ -124,7 +124,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v17";
+const STORAGE_KEY = "move-budget-shared-v18";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -163,6 +163,8 @@ const DEFAULT = {
   // CO scenario
   whitneyIncomeCO: 6755, // Whitney's pay minus ~4.4% CO state tax
   husbandScenario: "mid",
+  sierraScenario: "mid",
+  useSierraOffer: false,
   coCity: "Colorado Springs",
   budget: { mortgage: 3926, homeservices: 185, utilities: 727, fuel: 270, insurance: 376, healthfitness: 227, subscriptions: 161, groceries: 600, dining: 1000, gymnastics: 260, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
   actual: { mortgage: 0, homeservices: 0, utilities: 0, fuel: 0, insurance: 0, healthfitness: 0, subscriptions: 0, groceries: 0, dining: 0, gymnastics: 0, crunchlabs: 0, childcare: 0, cleaninglady: 0, paypal: 0, studentloans: 0, sofiloan: 0, usaacc: 0, usaacarloan: 0, furniture: 0, debtpayoff: 0, other: 0 },
@@ -187,6 +189,13 @@ const CO_CITIES = {
   "Denver": { rent: 2900, desc: "Urban core, most job opportunities, higher cost" },
   "Parker": { rent: 2950, desc: "Denver suburb, family-oriented, top schools" },
   "Golden": { rent: 3050, desc: "Foothills town, highest rent, close to mountains" },
+};
+
+// Whitney's potential Sierra Sales Engineer offer (annual gross, salary-zone based)
+const SIERRA_SCENARIOS = {
+  low:  { label: "Lower Zone", salary: 160000, desc: "Bottom of posted range — non-metro zone" },
+  mid:  { label: "Mid Zone",   salary: 200000, desc: "Middle of range — likely for Denver-area zone" },
+  high: { label: "Top Zone",  salary: 270000, desc: "Top of range — major metro (SF/NYC) zone" },
 };
 
 const HUS_CURRENT_SALARY = 143000;
@@ -322,7 +331,8 @@ function App() {
   const income = data.whitneyIncome + data.husbandIncome;
   const husScenario = HUS_SCENARIOS[data.husbandScenario];
   const husCoNet = annualToMonthlyNet(husScenario.salary, 0.044);
-  const whitneyCoNet = data.whitneyIncomeCO || data.whitneyIncome; // assume same if not set
+  const sierraNet = annualToMonthlyNet(SIERRA_SCENARIOS[data.sierraScenario].salary, 0.044);
+  const whitneyCoNet = data.useSierraOffer ? sierraNet : (data.whitneyIncomeCO || data.whitneyIncome);
   const incomeCO = whitneyCoNet + husCoNet;
   // CO state tax on Whitney (she'd owe CO tax working remote from CO)
   const whitneyCoTax = Math.round((data.whitneyIncome > 0 ? data.whitneyIncome * 12 / (1 - 0.12 - 0.0765) : 0) * 0.044 / 12); // rough
@@ -544,6 +554,43 @@ function App() {
                 💡 Quick estimate: your current {fmt(data.whitneyIncome)} minus ~4.4% CO tax ≈ <strong style={{ color: "#3672b5", cursor: "pointer" }} onClick={() => save({ ...data, whitneyIncomeCO: Math.round(data.whitneyIncome * 0.956) })}>{fmt(Math.round(data.whitneyIncome * 0.956))}</strong> (tap to use)
               </div>
             )}
+          </div>
+
+          <div style={{ ...s.good, marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#2d6e3f" }}>🎯 If Hired: Sierra Sales Engineer</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#2d6e3f", cursor: "pointer" }}>
+                <input type="checkbox" checked={data.useSierraOffer} onChange={e => save({ ...data, useSierraOffer: e.target.checked })} />
+                Use this instead
+              </label>
+            </div>
+            <div style={{ fontSize: 12, color: "#3a6e3f", lineHeight: 1.6, marginBottom: 10 }}>
+              You applied with a posted range of $160K–$270K (salary-zone based). Select a scenario:
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              {Object.entries(SIERRA_SCENARIOS).map(([k, v]) => (
+                <button key={k} style={s.btnSm(data.sierraScenario === k)} onClick={() => save({ ...data, sierraScenario: k })}>
+                  {v.label}: {fmt(v.salary)}/yr
+                </button>
+              ))}
+            </div>
+            <div style={{ background: "rgba(255,255,255,0.6)", borderRadius: 8, padding: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span>Gross annual:</span>
+                <span style={{ fontWeight: 700 }}>{fmt(SIERRA_SCENARIOS[data.sierraScenario].salary)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginTop: 4 }}>
+                <span>Est. monthly net (after fed + CO + FICA):</span>
+                <span style={{ fontWeight: 700, color: "#2d8a4e" }}>{fmt(annualToMonthlyNet(SIERRA_SCENARIOS[data.sierraScenario].salary, 0.044))}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>{SIERRA_SCENARIOS[data.sierraScenario].desc}</div>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ color: "#2d6e3f" }}>vs. current SeatGeek net ({fmt(data.whitneyIncome)}/mo):</span>
+                <span style={{ fontWeight: 700, color: "#2d8a4e" }}>
+                  +{fmt(annualToMonthlyNet(SIERRA_SCENARIOS[data.sierraScenario].salary, 0.044) - data.whitneyIncome)}/mo
+                </span>
+              </div>
+            </div>
           </div>
 
           <div style={{ ...s.warn, marginTop: 12 }}>
