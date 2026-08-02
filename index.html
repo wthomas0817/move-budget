@@ -8,7 +8,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   body { margin: 0; background: #faf9f7; }
   #root { min-height: 100vh; }
@@ -18,21 +18,22 @@
 
 <!--
   ═══════════════════════════════════════════════════════════════
-  ONE-TIME SETUP — paste your Firebase config below, then push
-  this file to GitHub. Both you and your husband open the SAME
-  link and you'll each see the other's updates.
+  Firebase config below. This uses Firestore (Build → Firestore
+  Database in the Firebase console sidebar).
 
-  Where to find this: Firebase Console → your project →
-  ⚙️ Project settings → General tab → scroll to "Your apps" →
-  select the Web app (or add one) → "SDK setup and config" →
-  copy the firebaseConfig object shown there.
+  Make sure Firestore Rules allow read/write (Firestore Console →
+  Rules tab) — and that the rule doesn't have an expiration date
+  that will silently cut off sync:
 
-  You'll also need Realtime Database enabled (Build → Realtime
-  Database → Create Database) and rules that allow read/write,
-  e.g. for a private family app:
-    {
-      "rules": { ".read": true, ".write": true }
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /{document=**} {
+          allow read, write: if true;
+        }
+      }
     }
+
   (Fine for a small private link only you and your husband have —
   don't post this URL publicly, since anyone with it could edit
   the data. Lock down rules further later if you want auth.)
@@ -40,10 +41,12 @@
 -->
 <script>
   const firebaseConfig = {
-    apiKey: "PASTE_YOUR_API_KEY",
-    authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
-    projectId: "PASTE_YOUR_PROJECT",
+    apiKey: "AIzaSyDQPZwrEi-2vxkZsnyuEaVSHfS9_69wWc0",
+    authDomain: "move-budget.firebaseapp.com",
+    projectId: "move-budget",
+    storageBucket: "move-budget.firebasestorage.app",
+    messagingSenderId: "652075730862",
+    appId: "1:652075730862:web:e2ceb71b47bc5173b8aa3f",
   };
 </script>
 
@@ -56,7 +59,7 @@ let db = null;
 if (configured) {
   try {
     firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
+    db = firebase.firestore();
   } catch (e) {
     console.error("Firebase init failed", e);
   }
@@ -68,19 +71,20 @@ if (configured) {
 }
 
 // ── Storage shim ──
-// If Firebase is configured above: reads/writes go to Realtime Database,
-// so both of you see the same data no matter which device you're on.
-// If NOT configured yet: falls back to this device's localStorage only.
+// Reads/writes go to Firestore, so both of you see the same data
+// no matter which device you're on. Falls back to localStorage
+// only if Firebase isn't configured or a call fails.
 window.storage = {
   async get(key, shared) {
     if (configured && shared && db) {
       try {
-        const snap = await db.ref("moveBudget/" + key).once("value");
-        const value = snap.val();
+        const doc = await db.collection("moveBudget").doc(key).get();
+        if (!doc.exists) return null;
+        const value = doc.data().value;
         if (value === null || value === undefined) return null;
         return { key, value, shared: true };
       } catch (e) {
-        console.warn("Firebase get failed, falling back to local", e);
+        console.warn("Firestore get failed, falling back to local", e);
       }
     }
     try {
@@ -92,10 +96,10 @@ window.storage = {
   async set(key, value, shared) {
     if (configured && shared && db) {
       try {
-        await db.ref("moveBudget/" + key).set(value);
+        await db.collection("moveBudget").doc(key).set({ value });
         return { key, value, shared: true };
       } catch (e) {
-        console.warn("Firebase set failed, falling back to local", e);
+        console.warn("Firestore set failed, falling back to local", e);
       }
     }
     try {
@@ -105,7 +109,7 @@ window.storage = {
   },
   async delete(key, shared) {
     if (configured && shared && db) {
-      try { await db.ref("moveBudget/" + key).remove(); return { key, deleted: true, shared: true }; }
+      try { await db.collection("moveBudget").doc(key).delete(); return { key, deleted: true, shared: true }; }
       catch (e) {}
     }
     try { localStorage.removeItem("mbp:" + key); return { key, deleted: true, shared: !!shared }; }
