@@ -7,25 +7,92 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   body { margin: 0; background: #faf9f7; }
   #root { min-height: 100vh; }
 </style>
 </head>
 <body>
+
+<!--
+  ═══════════════════════════════════════════════════════════════
+  ONE-TIME SETUP — paste your Firebase config below, then push
+  this file to GitHub. Both you and your husband open the SAME
+  link and you'll each see the other's updates.
+
+  Where to find this: Firebase Console → your project →
+  ⚙️ Project settings → General tab → scroll to "Your apps" →
+  select the Web app → "SDK setup and config" → copy the
+  firebaseConfig object shown there.
+
+  This uses Firestore (Build → Firestore Database in the sidebar).
+  Make sure Firestore Rules allow read/write, e.g. for a private
+  family app (Firestore Console → Rules tab):
+
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /{document=**} {
+          allow read, write: if true;
+        }
+      }
+    }
+
+  (Fine for a small private link only you and your husband have —
+  don't post this URL publicly, since anyone with it could edit
+  the data. Lock down rules further later if you want auth.)
+  ═══════════════════════════════════════════════════════════════
+-->
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyDQPZwrEi-2vxkZsnyuEaVSHfS9_69wWc0",
+    authDomain: "move-budget.firebaseapp.com",
+    projectId: "move-budget",
+    storageBucket: "move-budget.firebasestorage.app",
+    messagingSenderId: "652075730862",
+    appId: "1:652075730862:web:e2ceb71b47bc5173b8aa3f",
+  };
+</script>
+
 <div id="root"></div>
 
 <script>
-// ── Local storage shim so the app works outside Claude.ai ──
-// Mirrors the window.storage.get/set API the component expects.
-// Data is stored in this browser's localStorage under one shared key,
-// so anyone opening this page on THIS device/browser sees the same data.
-// If you and your husband each open it on your own phone/laptop, you'll
-// each have your OWN separate copy (this is a static page, not a live
-// synced database) — see the note at the bottom of the page for how to
-// keep them in sync.
+const configured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "PASTE_YOUR_API_KEY";
+let db = null;
+
+if (configured) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  } catch (e) {
+    console.error("Firebase init failed", e);
+  }
+} else {
+  const banner = document.createElement('div');
+  banner.style.cssText = 'max-width:680px;margin:0 auto;background:#fef3e2;border-bottom:1px solid #f0d9a8;color:#8a6b2e;padding:10px 20px;font-family:system-ui,sans-serif;font-size:12px;text-align:center;';
+  banner.innerHTML = '⚠️ Firebase not configured yet — data is only saving to this device. See setup instructions in the page source (view-source) to enable real sharing with your husband.';
+  document.body.insertBefore(banner, document.getElementById('root'));
+}
+
+// ── Storage shim ──
+// If Firebase is configured above: reads/writes go to Firestore,
+// so both of you see the same data no matter which device you're on.
+// If NOT configured yet: falls back to this device's localStorage only.
 window.storage = {
   async get(key, shared) {
+    if (configured && shared && db) {
+      try {
+        const doc = await db.collection("moveBudget").doc(key).get();
+        if (!doc.exists) return null;
+        const value = doc.data().value;
+        if (value === null || value === undefined) return null;
+        return { key, value, shared: true };
+      } catch (e) {
+        console.warn("Firestore get failed, falling back to local", e);
+      }
+    }
     try {
       const raw = localStorage.getItem("mbp:" + key);
       if (raw === null) return null;
@@ -33,22 +100,30 @@ window.storage = {
     } catch (e) { return null; }
   },
   async set(key, value, shared) {
+    if (configured && shared && db) {
+      try {
+        await db.collection("moveBudget").doc(key).set({ value });
+        return { key, value, shared: true };
+      } catch (e) {
+        console.warn("Firestore set failed, falling back to local", e);
+      }
+    }
     try {
       localStorage.setItem("mbp:" + key, value);
       return { key, value, shared: !!shared };
     } catch (e) { return null; }
   },
   async delete(key, shared) {
-    try {
-      localStorage.removeItem("mbp:" + key);
-      return { key, deleted: true, shared: !!shared };
-    } catch (e) { return null; }
+    if (configured && shared && db) {
+      try { await db.collection("moveBudget").doc(key).delete(); return { key, deleted: true, shared: true }; }
+      catch (e) {}
+    }
+    try { localStorage.removeItem("mbp:" + key); return { key, deleted: true, shared: !!shared }; }
+    catch (e) { return null; }
   },
   async list(prefix, shared) {
     try {
-      const keys = Object.keys(localStorage)
-        .filter(k => k.startsWith("mbp:" + (prefix || "")))
-        .map(k => k.slice(4));
+      const keys = Object.keys(localStorage).filter(k => k.startsWith("mbp:" + (prefix || ""))).map(k => k.slice(4));
       return { keys, prefix, shared: !!shared };
     } catch (e) { return null; }
   }
@@ -778,9 +853,9 @@ function App() {
         </>
       )}
       <div style={{ ...s.card, marginTop: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a3150", marginBottom: 6 }}>🔄 Sync With Your Husband</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#1a3150", marginBottom: 6 }}>🔄 Manual Backup (Export/Import)</div>
         <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
-          This page saves data to this device only. To share your latest numbers: tap Export, send him the copied text (text message or email), then he taps Import and pastes it on his device. Whoever updates last "wins" — so pick one person to be the keeper of the latest version, or export/import each time you both make changes.
+          If Firebase sync is set up (see page source), this happens automatically — you shouldn't need these. Keep them as a manual backup option just in case.
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={async () => {
@@ -841,7 +916,7 @@ root.render(<App />);
 </script>
 
 <div style="max-width:680px;margin:0 auto;padding:16px 20px 40px;font-family:system-ui,sans-serif;font-size:12px;color:#aaa;text-align:center;border-top:1px solid #eee;">
-  Data is saved in this browser only. To share updates with each other, use the Export/Import buttons in the app, or both edit on the same device.
+  This page shares data via Firebase Firestore once configured (see setup note at the top of the page source). Export/Import buttons below still work as a manual backup option.
 </div>
 </body>
 </html>
