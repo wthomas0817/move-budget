@@ -128,7 +128,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v18";
+const STORAGE_KEY = "move-budget-shared-v19";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -204,9 +204,9 @@ const SIERRA_SCENARIOS = {
 
 const HUS_CURRENT_SALARY = 143000;
 const HUS_SCENARIOS = {
-  low:  { label: "Pay Cut",     salary: 120000, desc: "Smaller CO firm or less complex projects" },
-  mid:  { label: "Lateral",     salary: 143000, desc: "Match current TI salary — realistic for CO Springs" },
-  high: { label: "Step Up",     salary: 160000, desc: "Sr role, military/govt construction, or GC leadership" },
+  low:  { label: "Lateral (No Cut)", salary: 143000, desc: "Matches current TI salary — his floor, not a pay cut" },
+  mid:  { label: "Data Center PM",   salary: 158000, desc: "2026 median total comp for data center PMs — AI-driven build surge" },
+  high: { label: "Sr. Data Center",  salary: 229000, desc: "Senior data center manager avg. total comp; top earners exceed $340K" },
 };
 
 const fmt = (n) => (n < 0 ? "-" : "") + Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -600,7 +600,7 @@ function App() {
           <div style={{ ...s.warn, marginTop: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#8a6b2e", marginBottom: 6 }}>👷 Husband — New Role in CO Springs</div>
             <div style={{ fontSize: 12, color: "#7a5f2a", lineHeight: 1.6, marginBottom: 10 }}>
-              Currently making <strong>$143K/yr at TI</strong>. Good news: CO Springs Sr Construction PM median is ~$140K, so a lateral move is realistic. Military construction (Fort Carson, Peterson SFB), healthcare, and residential growth provide steady demand. The real question is whether he can match or beat $143K. Select a scenario:
+              Currently making <strong>$143K/yr at TI</strong> — he's not taking a pay cut for this move. Good news: he's getting real LinkedIn interest for data center construction roles in CO, and that niche is commanding a serious premium right now due to the AI-driven build surge. Select a scenario:
             </div>
             <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
               {Object.entries(HUS_SCENARIOS).map(([k, v]) => (
