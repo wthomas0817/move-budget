@@ -8,7 +8,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   body { margin: 0; background: #faf9f7; }
   #root { min-height: 100vh; }
@@ -24,22 +24,15 @@
 
   Where to find this: Firebase Console → your project →
   ⚙️ Project settings → General tab → scroll to "Your apps" →
-  select the Web app → "SDK setup and config" → copy the
-  firebaseConfig object shown there.
+  select the Web app (or add one) → "SDK setup and config" →
+  copy the firebaseConfig object shown there.
 
-  This uses Firestore (Build → Firestore Database in the sidebar).
-  Make sure Firestore Rules allow read/write, e.g. for a private
-  family app (Firestore Console → Rules tab):
-
-    rules_version = '2';
-    service cloud.firestore {
-      match /databases/{database}/documents {
-        match /{document=**} {
-          allow read, write: if true;
-        }
-      }
+  You'll also need Realtime Database enabled (Build → Realtime
+  Database → Create Database) and rules that allow read/write,
+  e.g. for a private family app:
+    {
+      "rules": { ".read": true, ".write": true }
     }
-
   (Fine for a small private link only you and your husband have —
   don't post this URL publicly, since anyone with it could edit
   the data. Lock down rules further later if you want auth.)
@@ -47,12 +40,10 @@
 -->
 <script>
   const firebaseConfig = {
-    apiKey: "AIzaSyDQPZwrEi-2vxkZsnyuEaVSHfS9_69wWc0",
-    authDomain: "move-budget.firebaseapp.com",
-    projectId: "move-budget",
-    storageBucket: "move-budget.firebasestorage.app",
-    messagingSenderId: "652075730862",
-    appId: "1:652075730862:web:e2ceb71b47bc5173b8aa3f",
+    apiKey: "PASTE_YOUR_API_KEY",
+    authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "PASTE_YOUR_PROJECT",
   };
 </script>
 
@@ -65,7 +56,7 @@ let db = null;
 if (configured) {
   try {
     firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
+    db = firebase.database();
   } catch (e) {
     console.error("Firebase init failed", e);
   }
@@ -77,20 +68,19 @@ if (configured) {
 }
 
 // ── Storage shim ──
-// If Firebase is configured above: reads/writes go to Firestore,
+// If Firebase is configured above: reads/writes go to Realtime Database,
 // so both of you see the same data no matter which device you're on.
 // If NOT configured yet: falls back to this device's localStorage only.
 window.storage = {
   async get(key, shared) {
     if (configured && shared && db) {
       try {
-        const doc = await db.collection("moveBudget").doc(key).get();
-        if (!doc.exists) return null;
-        const value = doc.data().value;
+        const snap = await db.ref("moveBudget/" + key).once("value");
+        const value = snap.val();
         if (value === null || value === undefined) return null;
         return { key, value, shared: true };
       } catch (e) {
-        console.warn("Firestore get failed, falling back to local", e);
+        console.warn("Firebase get failed, falling back to local", e);
       }
     }
     try {
@@ -102,10 +92,10 @@ window.storage = {
   async set(key, value, shared) {
     if (configured && shared && db) {
       try {
-        await db.collection("moveBudget").doc(key).set({ value });
+        await db.ref("moveBudget/" + key).set(value);
         return { key, value, shared: true };
       } catch (e) {
-        console.warn("Firestore set failed, falling back to local", e);
+        console.warn("Firebase set failed, falling back to local", e);
       }
     }
     try {
@@ -115,7 +105,7 @@ window.storage = {
   },
   async delete(key, shared) {
     if (configured && shared && db) {
-      try { await db.collection("moveBudget").doc(key).delete(); return { key, deleted: true, shared: true }; }
+      try { await db.ref("moveBudget/" + key).remove(); return { key, deleted: true, shared: true }; }
       catch (e) {}
     }
     try { localStorage.removeItem("mbp:" + key); return { key, deleted: true, shared: !!shared }; }
@@ -134,7 +124,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v13";
+const STORAGE_KEY = "move-budget-shared-v15";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -180,7 +170,8 @@ const DEFAULT = {
   moveFund: 0,
   moveGoal: 15000,
   contributions: [],
-  homeSaleValue: 490000,
+  homeSaleValue: 515000,
+  mortgageBalance: 527000,
   parkerHomeLow: 850000,
   parkerHomeHigh: 850000,
   parkerRentEstimate: 2950,
@@ -701,15 +692,22 @@ function App() {
     const bridgeSurplus = currentSurplus - data.parkerRentEstimate; // extra rent eats into surplus
     const monthsSustainable = bridgeSurplus > 0 ? "indefinitely (still positive)" : `~${Math.floor(data.moveFund / Math.abs(bridgeSurplus || 1))} months using saved funds`;
 
+    // Real equity accounting for what's still owed
+    const rawEquity = data.homeSaleValue - data.mortgageBalance;
+    const traditionalSellingCosts = data.homeSaleValue * 0.075; // 6% commission + 1.5% closing
+    const traditionalNetEquity = rawEquity - traditionalSellingCosts;
+    const isUnderwater = traditionalNetEquity < 0;
+
     // Opendoor math
     const odOfferPct = 0.935; // ~6.5% below FMV, mid-range of 2-5%+ discount plus their margin
     const odOffer = data.homeSaleValue * odOfferPct;
     const odServiceFee = odOffer * 0.05;
     const odClosing = odOffer * 0.01;
     const odRepairs = odOffer * 0.02;
-    const odNet = odOffer - odServiceFee - odClosing - odRepairs;
-    const traditionalNet = data.homeSaleValue * (1 - 0.06 - 0.015); // 6% commission + 1.5% closing
-    const odVsTraditional = traditionalNet - odNet;
+    const odNetBeforePayoff = odOffer - odServiceFee - odClosing - odRepairs;
+    const odNetEquity = odNetBeforePayoff - data.mortgageBalance;
+    const traditionalNet = data.homeSaleValue * (1 - 0.06 - 0.015); // for reference, gross proceeds before payoff
+    const odVsTraditional = traditionalNetEquity - odNetEquity;
 
     return (
     <div style={s.sec}>
@@ -721,17 +719,42 @@ function App() {
           <EditableNum value={data.homeSaleValue} onSave={v => save({ ...data, homeSaleValue: v })} color="#d97706" />
         </div>
         <div style={s.row}>
-          <span style={s.lbl}>🏡 Parker home, low end (4br+office)</span>
-          <EditableNum value={data.parkerHomeLow} onSave={v => save({ ...data, parkerHomeLow: v })} color="#3672b5" />
+          <span style={s.lbl}>🏦 Remaining mortgage balance</span>
+          <EditableNum value={data.mortgageBalance} onSave={v => save({ ...data, mortgageBalance: v })} color="#c44" />
         </div>
         <div style={{ ...s.row, borderBottom: "none" }}>
-          <span style={s.lbl}>🏡 Parker home, high end</span>
-          <EditableNum value={data.parkerHomeHigh} onSave={v => save({ ...data, parkerHomeHigh: v })} color="#3672b5" />
+          <span style={{ ...s.lbl, fontWeight: 700 }}>💰 Real equity (before selling costs)</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: rawEquity >= 0 ? "#2d8a4e" : "#c44" }}>{rawEquity >= 0 ? "" : "−"}{fmt(Math.abs(rawEquity))}</span>
+        </div>
+
+        {isUnderwater ? (
+          <div style={{ marginTop: 10, padding: "12px 14px", background: "#fdecec", border: "1px solid #f0b8b8", borderRadius: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#a33", marginBottom: 4 }}>⚠️ You're likely underwater on this house</div>
+            <div style={{ fontSize: 12, color: "#a33", lineHeight: 1.6 }}>
+              After a traditional sale's ~7.5% costs (commission + closing), you'd net about <strong>{fmt(Math.abs(traditionalNetEquity))} negative</strong> — meaning you'd need to bring roughly that much cash to closing rather than walk away with proceeds. This is worth confirming with a real payoff quote from your lender and a realtor's CMA before making any final decisions, since even small changes in sale price or payoff balance shift this a lot.
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "14px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
+            <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Est. Net Proceeds (traditional sale)</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: "#2d8a4e" }}>{fmt(traditionalNetEquity)}</div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0eeea" }}>
+          <div style={s.row}>
+            <span style={s.lbl}>🏡 Parker home, low end (4br+office)</span>
+            <EditableNum value={data.parkerHomeLow} onSave={v => save({ ...data, parkerHomeLow: v })} color="#3672b5" />
+          </div>
+          <div style={{ ...s.row, borderBottom: "none" }}>
+            <span style={s.lbl}>🏡 Parker home, high end</span>
+            <EditableNum value={data.parkerHomeHigh} onSave={v => save({ ...data, parkerHomeHigh: v })} color="#3672b5" />
+          </div>
         </div>
         <div style={{ textAlign: "center", padding: "14px 0 4px", borderTop: "2px solid #eee", marginTop: 4 }}>
-          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Gap to Cover (midpoint est.)</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "#c44" }}>{fmt(homeGap)}</div>
-          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>after rolling in full sale proceeds — before subtracting your remaining mortgage balance, which reduces actual cash you'd net from the sale</div>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Cash Needed Beyond Home Sale</div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: "#c44" }}>{fmt(((data.parkerHomeLow + data.parkerHomeHigh) / 2) - Math.max(0, traditionalNetEquity))}</div>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>Parker home price minus your real net proceeds (this financing gap would need a mortgage in Parker, likely larger than you may have assumed)</div>
         </div>
       </div>
 
@@ -765,7 +788,7 @@ function App() {
       <div style={s.secT}>🏷️ Selling via Opendoor vs. Traditional Listing</div>
       <div style={s.card}>
         <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
-          Since renting first removes the time pressure to sell fast, it's worth comparing what you'd actually net each way.
+          Since renting first removes the time pressure to sell fast, it's worth comparing what you'd actually walk away with each way — after paying off your {fmt(data.mortgageBalance)} mortgage balance.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ background: "#fdf6ec", borderRadius: 8, padding: 12 }}>
@@ -774,10 +797,11 @@ function App() {
               Offer (~6.5% below FMV): {fmt(odOffer)}<br />
               − 5% service fee: −{fmt(odServiceFee)}<br />
               − ~1% closing: −{fmt(odClosing)}<br />
-              − ~2% repairs: −{fmt(odRepairs)}
+              − ~2% repairs: −{fmt(odRepairs)}<br />
+              − mortgage payoff: −{fmt(data.mortgageBalance)}
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#8a6b2e", marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0d9a8" }}>
-              Net: {fmt(odNet)}
+            <div style={{ fontSize: 16, fontWeight: 700, color: odNetEquity >= 0 ? "#8a6b2e" : "#a33", marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0d9a8" }}>
+              You get: {odNetEquity >= 0 ? fmt(odNetEquity) : `−${fmt(Math.abs(odNetEquity))}`}
             </div>
           </div>
           <div style={{ background: "#eef3fa", borderRadius: 8, padding: 12 }}>
@@ -786,17 +810,17 @@ function App() {
               Full value: {fmt(data.homeSaleValue)}<br />
               − 6% agent commission<br />
               − ~1.5% closing costs<br />
-              (takes longer, but no rush now)
+              − mortgage payoff: −{fmt(data.mortgageBalance)}
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1a3150", marginTop: 8, paddingTop: 8, borderTop: "1px solid #d0dcea" }}>
-              Net: {fmt(traditionalNet)}
+            <div style={{ fontSize: 16, fontWeight: 700, color: traditionalNetEquity >= 0 ? "#1a3150" : "#a33", marginTop: 8, paddingTop: 8, borderTop: "1px solid #d0dcea" }}>
+              You get: {traditionalNetEquity >= 0 ? fmt(traditionalNetEquity) : `−${fmt(Math.abs(traditionalNetEquity))}`}
             </div>
           </div>
         </div>
         <div style={{ textAlign: "center", marginTop: 12, padding: "10px 0 0", borderTop: "2px solid #eee" }}>
           <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Traditional Sale Nets You</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#2d8a4e" }}>+{fmt(odVsTraditional)} more</div>
-          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>Since you're not in a rush anymore, the speed premium of Opendoor may not be worth this gap.</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#2d8a4e" }}>{fmt(odVsTraditional)} more</div>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>{isUnderwater ? "Either way you'd owe money at closing — but traditional costs you less out of pocket." : "Since you're not in a rush anymore, the speed premium of Opendoor may not be worth this gap."}</div>
         </div>
       </div>
 
@@ -916,7 +940,7 @@ root.render(<App />);
 </script>
 
 <div style="max-width:680px;margin:0 auto;padding:16px 20px 40px;font-family:system-ui,sans-serif;font-size:12px;color:#aaa;text-align:center;border-top:1px solid #eee;">
-  This page shares data via Firebase Firestore once configured (see setup note at the top of the page source). Export/Import buttons below still work as a manual backup option.
+  This page shares data via Firebase Realtime Database once configured (see setup note at the top of the page source). Export/Import buttons below still work as a manual backup option.
 </div>
 </body>
 </html>
