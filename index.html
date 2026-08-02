@@ -124,7 +124,7 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v15";
+const STORAGE_KEY = "move-budget-shared-v16";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
@@ -170,6 +170,9 @@ const DEFAULT = {
   moveFund: 0,
   moveGoal: 15000,
   contributions: [],
+  closingFund: 0,
+  closingFundGoal: 51000,
+  closingContributions: [],
   homeSaleValue: 515000,
   mortgageBalance: 527000,
   parkerHomeLow: 850000,
@@ -271,6 +274,7 @@ function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("budget");
   const [contribAmt, setContribAmt] = useState("");
+  const [closingContribAmt, setClosingContribAmt] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -279,7 +283,7 @@ function App() {
         const r = await window.storage.get(STORAGE_KEY, true);
         if (r?.value) {
           const p = JSON.parse(r.value);
-          setData({ ...DEFAULT, ...p, budget: { ...DEFAULT.budget, ...p.budget }, actual: { ...DEFAULT.actual, ...p.actual }, coEstimate: { ...DEFAULT.coEstimate, ...p.coEstimate } });
+          setData({ ...DEFAULT, ...p, budget: { ...DEFAULT.budget, ...p.budget }, actual: { ...DEFAULT.actual, ...p.actual }, coEstimate: { ...DEFAULT.coEstimate, ...p.coEstimate }, contributions: p.contributions || [], closingContributions: p.closingContributions || [] });
         } else setData(DEFAULT);
       } catch { setData(DEFAULT); }
       setLoading(false);
@@ -300,6 +304,13 @@ function App() {
     if (!a || a <= 0) return;
     save({ ...data, moveFund: data.moveFund + a, contributions: [...data.contributions, { amount: a, date: new Date().toISOString() }] });
     setContribAmt("");
+  };
+
+  const addClosingContrib = () => {
+    const a = parseFloat(closingContribAmt);
+    if (!a || a <= 0) return;
+    save({ ...data, closingFund: data.closingFund + a, closingContributions: [...data.closingContributions, { amount: a, date: new Date().toISOString() }] });
+    setClosingContribAmt("");
   };
 
   const totalBudget = useMemo(() => data ? Object.values(data.budget).reduce((a, b) => a + b, 0) : 0, [data]);
@@ -824,6 +835,42 @@ function App() {
         </div>
       </div>
 
+      <div style={s.secT}>🏦 Closing Fund</div>
+      <div style={s.card}>
+        <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
+          Separate from your Move Fund — this covers the potential cash-to-close gap if selling doesn't fully cover your mortgage payoff and selling costs.
+        </div>
+        <div style={{ textAlign: "center", marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: "#999", textTransform: "uppercase" }}>Saved</div>
+          <div style={{ fontSize: 30, fontWeight: 700, color: "#1a3150" }}>{fmt(data.closingFund)}</div>
+        </div>
+        <MountainSVG pctFill={data.closingFundGoal > 0 ? (data.closingFund / data.closingFundGoal) * 100 : 0} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#999", marginTop: 2 }}>
+          <span>{fmt(0)}</span><span>Goal: <EditableNum value={data.closingFundGoal} onSave={v => save({ ...data, closingFundGoal: v })} color="#1a3150" /></span>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+          <input type="number" placeholder="Amount" value={closingContribAmt} onChange={e => setClosingContribAmt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") addClosingContrib(); }}
+            style={{ ...s.input, flex: 1, width: "auto", textAlign: "left" }} />
+          <button onClick={addClosingContrib} style={{ ...s.btn, background: "#c44" }}>Add to Fund</button>
+        </div>
+        <div style={{ marginTop: 10, padding: "10px 12px", background: "#fdecec", borderRadius: 8 }}>
+          <div style={{ fontSize: 11, color: "#a33" }}>
+            Goal set to <strong>{fmt(data.closingFundGoal)}</strong>, matching your current estimated cash-to-close gap. Update this as you get a real payoff quote or CMA.
+          </div>
+        </div>
+        {data.closingContributions.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #f0eeea" }}>
+            {data.closingContributions.slice(-8).reverse().map((c, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f5f3f0", fontSize: 13 }}>
+                <span style={{ color: "#999" }}>{new Date(c.date).toLocaleDateString()}</span>
+                <span style={{ fontWeight: 600, color: "#2d8a4e" }}>+{fmt(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div style={s.secT}>Move Fund</div>
       <div style={s.card}>
         <div style={{ textAlign: "center", marginBottom: 6 }}>
@@ -919,7 +966,7 @@ function App() {
         <div style={s.hGrid}>
           <div style={s.hBox}><div style={s.hNum}>{daysLeft}</div><div style={s.hLbl}>Days Left</div></div>
           <div style={s.hBox}><div style={s.hNum}>{monthsLeft}</div><div style={s.hLbl}>Months</div></div>
-          <div style={s.hBox}><div style={s.hNum}>{fmt(data.moveFund)}</div><div style={s.hLbl}>Move Fund</div></div>
+          <div style={s.hBox}><div style={s.hNum}>{fmt(data.moveFund + data.closingFund)}</div><div style={s.hLbl}>Total Saved</div></div>
         </div>
       </div>
       <div style={s.tabs}>
