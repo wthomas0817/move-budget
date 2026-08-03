@@ -128,11 +128,12 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v20";
+const STORAGE_KEY = "move-budget-shared-v21";
 const MOVE_DATE = new Date("2027-06-01");
 
 const CATEGORIES = [
   { key: "mortgage", label: "Mortgage", icon: "🏠" },
+  { key: "propertytax", label: "Property Tax (may be escrowed in mortgage)", icon: "🧾" },
   { key: "homeservices", label: "Home Svcs (alarm+pest+HOA)", icon: "🔧" },
   { key: "utilities", label: "Utilities (elec+water+gas+internet)", icon: "⚡" },
   { key: "fuel", label: "Vehicle Fuel (Jeep+Hyundai Hybrid)", icon: "⛽" },
@@ -170,9 +171,9 @@ const DEFAULT = {
   sierraScenario: "mid",
   useSierraOffer: false,
   coCity: "Colorado Springs",
-  budget: { mortgage: 3926, homeservices: 185, utilities: 727, fuel: 270, insurance: 376, healthfitness: 227, subscriptions: 161, groceries: 600, dining: 1000, gymnastics: 260, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
-  actual: { mortgage: 0, homeservices: 0, utilities: 0, fuel: 0, insurance: 0, healthfitness: 0, subscriptions: 0, groceries: 0, dining: 0, gymnastics: 0, crunchlabs: 0, childcare: 0, cleaninglady: 0, paypal: 0, studentloans: 0, sofiloan: 0, usaacc: 0, usaacarloan: 0, furniture: 0, debtpayoff: 0, other: 0 },
-  coEstimate: { mortgage: 2200, homeservices: 185, utilities: 620, fuel: 270, insurance: 400, healthfitness: 227, subscriptions: 161, groceries: 620, dining: 1000, gymnastics: 220, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
+  budget: { mortgage: 3926, propertytax: 0, homeservices: 185, utilities: 727, fuel: 270, insurance: 376, healthfitness: 227, subscriptions: 161, groceries: 600, dining: 1000, gymnastics: 260, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
+  actual: { mortgage: 0, propertytax: 0, homeservices: 0, utilities: 0, fuel: 0, insurance: 0, healthfitness: 0, subscriptions: 0, groceries: 0, dining: 0, gymnastics: 0, crunchlabs: 0, childcare: 0, cleaninglady: 0, paypal: 0, studentloans: 0, sofiloan: 0, usaacc: 0, usaacarloan: 0, furniture: 0, debtpayoff: 0, other: 0 },
+  coEstimate: { mortgage: 2200, propertytax: 425, homeservices: 185, utilities: 620, fuel: 270, insurance: 667, healthfitness: 227, subscriptions: 161, groceries: 620, dining: 1000, gymnastics: 220, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
   moveFund: 0,
   moveGoal: 15000,
   contributions: [],
