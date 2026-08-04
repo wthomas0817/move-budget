@@ -4,27 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Fate TX → Parker CO — Move Budget Planner</title>
-<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" onerror="alert('FAILED TO LOAD: React')"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" onerror="alert('FAILED TO LOAD: ReactDOM')"></script>
-<script crossorigin src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js" onerror="alert('FAILED TO LOAD: Babel')"></script>
-<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="alert('FAILED TO LOAD: Firebase App')"></script>
-<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="alert('FAILED TO LOAD: Firebase Firestore')"></script>
-<script>
-  window.addEventListener('load', function() {
-    setTimeout(function() {
-      const missing = [];
-      if (typeof React === 'undefined') missing.push('React');
-      if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
-      if (typeof Babel === 'undefined') missing.push('Babel');
-      if (typeof firebase === 'undefined') missing.push('firebase');
-      if (missing.length > 0) {
-        alert('These libraries never became available after page load: ' + missing.join(', ') + '. Check the Network tab and click each of these specific requests to see their Status Code and Response.');
-      } else {
-        console.log('✓ All libraries loaded successfully: React, ReactDOM, Babel, firebase');
-      }
-    }, 3000);
-  });
-</script>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   body { margin: 0; background: #faf9f7; }
   #root { min-height: 100vh; }
