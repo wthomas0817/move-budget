@@ -4,11 +4,27 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Fate TX → Parker CO — Move Budget Planner</title>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" onerror="alert('FAILED TO LOAD: React')"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" onerror="alert('FAILED TO LOAD: ReactDOM')"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js" onerror="alert('FAILED TO LOAD: Babel')"></script>
+<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onerror="alert('FAILED TO LOAD: Firebase App')"></script>
+<script crossorigin src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onerror="alert('FAILED TO LOAD: Firebase Firestore')"></script>
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      const missing = [];
+      if (typeof React === 'undefined') missing.push('React');
+      if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+      if (typeof Babel === 'undefined') missing.push('Babel');
+      if (typeof firebase === 'undefined') missing.push('firebase');
+      if (missing.length > 0) {
+        alert('These libraries never became available after page load: ' + missing.join(', ') + '. Check the Network tab and click each of these specific requests to see their Status Code and Response.');
+      } else {
+        console.log('✓ All libraries loaded successfully: React, ReactDOM, Babel, firebase');
+      }
+    }, 3000);
+  });
+</script>
 <style>
   body { margin: 0; background: #faf9f7; }
   #root { min-height: 100vh; }
@@ -124,7 +140,7 @@ window.storage = {
 };
 </script>
 
-<script type="text/babel" data-presets="react">
+<script type="text/plain" id="app-source">
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
@@ -1091,12 +1107,24 @@ function App() {
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+</script>
+
+<script>
+  // Manually transform the JSX source with the CLASSIC runtime (not "automatic"),
+  // since we're loading React as a plain global script, not as an ES module.
+  // The automatic runtime injects `import` statements that browsers reject
+  // outside of type="module" scripts, which is what caused the blank page.
+  const source = document.getElementById('app-source').textContent;
+  const compiled = Babel.transform(source, {
+    presets: [["react", { runtime: "classic" }]],
+  }).code;
+  const script = document.createElement('script');
+  script.textContent = compiled + "\n\nconst root = ReactDOM.createRoot(document.getElementById('root')); root.render(React.createElement(App));";
+  document.body.appendChild(script);
 </script>
 
 <div style="max-width:680px;margin:0 auto;padding:16px 20px 40px;font-family:system-ui,sans-serif;font-size:12px;color:#aaa;text-align:center;border-top:1px solid #eee;">
-  This page shares data via Firebase Realtime Database once configured (see setup note at the top of the page source). Export/Import buttons below still work as a manual backup option.
+  This page shares data via Firebase Firestore once configured (see setup note at the top of the page source). Export/Import buttons below still work as a manual backup option.
 </div>
 </body>
 </html>
