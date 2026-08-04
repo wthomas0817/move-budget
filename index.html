@@ -128,8 +128,8 @@ window.storage = {
 const { useState, useEffect, useCallback, useMemo } = React;
 
 
-const STORAGE_KEY = "move-budget-shared-v21";
-const MOVE_DATE = new Date("2027-06-01");
+const STORAGE_KEY = "move-budget-shared-v23";
+const MOVE_DATE = new Date("2027-08-01");
 
 const CATEGORIES = [
   { key: "mortgage", label: "Mortgage", icon: "🏠" },
@@ -170,10 +170,10 @@ const DEFAULT = {
   husbandScenario: "mid",
   sierraScenario: "mid",
   useSierraOffer: false,
-  coCity: "Colorado Springs",
+  coCity: "Parker",
   budget: { mortgage: 3926, propertytax: 0, homeservices: 185, utilities: 727, fuel: 270, insurance: 376, healthfitness: 227, subscriptions: 161, groceries: 600, dining: 1000, gymnastics: 260, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
   actual: { mortgage: 0, propertytax: 0, homeservices: 0, utilities: 0, fuel: 0, insurance: 0, healthfitness: 0, subscriptions: 0, groceries: 0, dining: 0, gymnastics: 0, crunchlabs: 0, childcare: 0, cleaninglady: 0, paypal: 0, studentloans: 0, sofiloan: 0, usaacc: 0, usaacarloan: 0, furniture: 0, debtpayoff: 0, other: 0 },
-  coEstimate: { mortgage: 2200, propertytax: 425, homeservices: 185, utilities: 620, fuel: 270, insurance: 667, healthfitness: 227, subscriptions: 161, groceries: 620, dining: 1000, gymnastics: 220, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
+  coEstimate: { mortgage: 2950, propertytax: 425, homeservices: 185, utilities: 620, fuel: 270, insurance: 667, healthfitness: 227, subscriptions: 161, groceries: 620, dining: 1000, gymnastics: 220, crunchlabs: 39, childcare: 125, cleaninglady: 231, paypal: 54, studentloans: 1202, sofiloan: 698, usaacc: 100, usaacarloan: 405, furniture: 250, debtpayoff: 1054, other: 0 },
   moveFund: 0,
   moveGoal: 15000,
   contributions: [],
@@ -525,7 +525,7 @@ function App() {
     return (
       <div style={s.sec}>
         {/* ── Income comparison ── */}
-        <div style={s.secT}>Income: Now vs. Colorado Springs</div>
+        <div style={s.secT}>Income: Now vs. {data.coCity}</div>
         <div style={s.card}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Current — Fate, TX (no state income tax)</div>
           <div style={s.row}>
@@ -878,10 +878,10 @@ function App() {
         </div>
       </div>
 
-      <div style={s.secT}>🌉 Rent-First Bridge Scenario</div>
+      <div style={s.secT}>🌉 The Plan: Rent First in Parker</div>
       <div style={s.card}>
         <div style={{ fontSize: 11, color: "#888", marginBottom: 10, lineHeight: 1.5 }}>
-          Renting in Parker before selling Fate means carrying both costs at once for a while. Here's what that overlap looks like.
+          Renting first lets you get a real feel for the area before committing to a specific neighborhood or building. It also removes the pressure to sell Fate on a rushed timeline. Here's the overlap cost while you're carrying both.
         </div>
         <div style={s.row}>
           <span style={s.lbl}>🏠 Fate mortgage (still owed)</span>
@@ -1070,8 +1070,8 @@ function App() {
   return (
     <div style={s.app}>
       <div style={s.hdr}>
-        <div style={s.hTitle}>Fate, TX → Colorado Springs</div>
-        <div style={s.hSub}>Whitney & Family • Move Budget Planner • June 2027</div>
+        <div style={s.hTitle}>Fate, TX → Parker, CO</div>
+        <div style={s.hSub}>Whitney & Family • Move Budget Planner • August 2027</div>
         <div style={s.hGrid}>
           <div style={s.hBox}><div style={s.hNum}>{daysLeft}</div><div style={s.hLbl}>Days Left</div></div>
           <div style={s.hBox}><div style={s.hNum}>{monthsLeft}</div><div style={s.hLbl}>Months</div></div>
